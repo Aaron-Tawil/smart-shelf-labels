@@ -20,6 +20,18 @@ Smart Shelf Labels is an automated automated signage generator for retail stores
     - `google-generativeai` (LLM processing)
 - **Infrastructure**: Google Cloud Platform (Cloud Functions, Pub/Sub, Firestore, Gmail API)
 
+## Architecture
+
+```mermaid
+graph LR
+    User[Store Manager] -->|Email Excel| Gmail
+    Gmail -->|Push Notification| PubSub[Cloud Pub/Sub]
+    PubSub -->|Trigger| CF[Cloud Function]
+    CF -->|Read/Write| Firestore[Firestore State]
+    CF -->|Clean Names| Gemini[Gemini 1.5 Flash]
+    CF -->|Reply PDF| Gmail
+```
+
 ## Setup
 
 1. **Clone the repository**
@@ -46,18 +58,6 @@ Smart Shelf Labels is an automated automated signage generator for retail stores
    ```bash
    python main.py
    ```
-
-## Architecture
-
-```mermaid
-graph LR
-    User[Store Manager] -->|Email Excel| Gmail
-    Gmail -->|Push Notification| PubSub[Cloud Pub/Sub]
-    PubSub -->|Trigger| CF[Cloud Function]
-    CF -->|Read/Write| Firestore[Firestore State]
-    CF -->|Clean Names| Gemini[Gemini 1.5 Flash]
-    CF -->|Reply PDF| Gmail
-```
 
 ## Deployment
 
