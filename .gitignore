@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Environment & Secrets
+env.yaml
+credentials.json
+token.json
+.formatted_keys.json
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+~$*
+
+
+# Project specific
+experiments/
+docs/
+output/
+*.log

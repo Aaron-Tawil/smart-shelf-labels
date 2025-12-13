@@ -1,0 +1,14 @@
+pandas
+reportlab
+google-api-python-client
+google-cloud-firestore
+arabic_reshaper
+python-bidi
+openpyxl
+gunicorn
+Flask
+functions-framework
+google-auth-oauthlib
+google-generativeai
+google-genai
+PyYAML
