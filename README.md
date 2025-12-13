@@ -47,6 +47,37 @@ Smart Shelf Labels is an automated automated signage generator for retail stores
    python main.py
    ```
 
+## Architecture
+
+```mermaid
+graph LR
+    User[Store Manager] -->|Email Excel| Gmail
+    Gmail -->|Push Notification| PubSub[Cloud Pub/Sub]
+    PubSub -->|Trigger| CF[Cloud Function]
+    CF -->|Read/Write| Firestore[Firestore State]
+    CF -->|Clean Names| Gemini[Gemini 1.5 Flash]
+    CF -->|Reply PDF| Gmail
+```
+
+## Deployment
+
+The project includes a custom deployment automation script to simplify the detailed `gcloud` configuration.
+
+```bash
+python scripts/deploy_cloud_function.py
+```
+
+This script automates:
+1.  **Secret Injection**: Merges local `token.json` credentials into runtime environment variables.
+2.  **Configuration**: Sets memory (512MB), region, and Pub/Sub triggers.
+3.  **Deployment**: Pushes the code to Google Cloud Functions (Gen 2).
+
+## Technical Highlights
+
+- **Complex Hebrew Support**: Solved classic Python PDF issues with Right-to-Left (RTL) languages using `arabic-reshaper` and `python-bidi` for correct text rendering.
+- **Cost Optimization**: Implemented specific logic to check Firestore state, ensuring new signs are generated *only* for products that have changed price or are new, significantly reducing printing waste.
+- **Resilient AI**: Uses Few-Shot prompting with Google Gemini to reliably standardize varied ERP product names into clean, uniform label text.
+
 ## Example Output
 
 ![Generated Signs Example](example/output_example_readme.png)
