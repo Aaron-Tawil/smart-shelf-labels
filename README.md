@@ -18,7 +18,7 @@ Smart Shelf Labels is an automated automated signage generator for retail stores
     - `reportlab` (PDF generation)
     - `firebase_admin` / `google-cloud-firestore` (State management)
     - `google-generativeai` (LLM processing)
-- **Infrastructure**: Google Cloud Platform (Cloud Functions, Firestore, Gmail API)
+- **Infrastructure**: Google Cloud Platform (Cloud Functions, Pub/Sub, Firestore, Gmail API)
 
 ## Setup
 
