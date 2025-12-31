@@ -8,6 +8,7 @@ dist/
 
 # Environment & Secrets
 env.yaml
+deploy_env.yaml
 credentials.json
 token.json
 .formatted_keys.json
