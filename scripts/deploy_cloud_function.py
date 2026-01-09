@@ -59,6 +59,23 @@ def deploy():
     # Create temporary env file
     env_file = "deploy_env.yaml"
     print(f"Creating {env_file}...")
+    
+    # Also update the persistent env.yaml for local development convenience
+    if os.path.exists("env.yaml"):
+        print("Updating local env.yaml with fresh token...")
+        try:
+            import yaml
+            with open("env.yaml", 'r') as f:
+                local_env = yaml.safe_load(f) or {}
+            
+            # Update the token
+            local_env['GMAIL_TOKEN_JSON'] = json.loads(token_content)
+            
+            with open("env.yaml", 'w') as f:
+                yaml.dump(local_env, f, default_flow_style=False)
+        except Exception as e:
+            print(f"Warning: Failed to update local env.yaml: {e}")
+
     with open(env_file, 'w') as f:
         # Use json.dumps to handle escaping of the token string automatically
         # It adds surrounding double quotes, so it is a valid JSON string, which is valid YAML

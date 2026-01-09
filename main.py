@@ -42,22 +42,39 @@ def generate_signs_http(request):
     if request.path == '/renew_watch':
         print("Received renew_watch request.")
         try:
-            # Re-use the setup_watch logic logic or call gmail service directly
-            # Since we have the token in env var, we can just call watch()
             token_json_str = os.environ.get('GMAIL_TOKEN_JSON')
             if not token_json_str:
+                print("CRITICAL: GMAIL_TOKEN_JSON not set!")
                 return ('GMAIL_TOKEN_JSON env var not set', 500, headers)
-                
+            
+            # Log token info (partial)
+            try:
+                t_info = json.loads(token_json_str)
+                print(f"Token loaded. Expiry in JSON: {t_info.get('expiry')}")
+            except:
+                print("Could not parse token JSON for logging.")
+
             service = get_gmail_service(token_info=json.loads(token_json_str))
+            
             request_body = {
                 'labelIds': ['INBOX'],
                 'topicName': 'projects/super-home-automation/topics/gmail-watch'
             }
-            service.users().watch(userId='me', body=request_body).execute()
-            print("Watch renewed successfully via endpoint.")
-            return ('Watch renewed successfully', 200, headers)
+            
+            print("Executing watch()...")
+            response = service.users().watch(userId='me', body=request_body).execute()
+            
+            # LOG THE RESPONSE
+            print(f"Watch Response: {json.dumps(response)}")
+            expiration = response.get('expiration')
+            history_id = response.get('historyId')
+            print(f"Watch Renewed! Expires: {expiration}, HistoryId: {history_id}")
+            
+            return (f"Watch renewed successfully. Access expires: {expiration}", 200, headers)
         except Exception as e:
+            import traceback
             print(f"Error renewing watch: {e}")
+            traceback.print_exc()
             return (f"Error renewing watch: {str(e)}", 500, headers)
 
     if request.method != 'POST':
