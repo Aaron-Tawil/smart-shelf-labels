@@ -42,19 +42,8 @@ def generate_signs_http(request):
     if request.path == '/renew_watch':
         print("Received renew_watch request.")
         try:
-            token_json_str = os.environ.get('GMAIL_TOKEN_JSON')
-            if not token_json_str:
-                print("CRITICAL: GMAIL_TOKEN_JSON not set!")
-                return ('GMAIL_TOKEN_JSON env var not set', 500, headers)
-            
-            # Log token info (partial)
-            try:
-                t_info = json.loads(token_json_str)
-                print(f"Token loaded. Expiry in JSON: {t_info.get('expiry')}")
-            except:
-                print("Could not parse token JSON for logging.")
-
-            service = get_gmail_service(token_info=json.loads(token_json_str))
+            # Use Secret Manager for token storage
+            service = get_gmail_service(use_secret_manager=True)
             
             request_body = {
                 'labelIds': ['INBOX'],
@@ -136,13 +125,8 @@ def pubsub_handler(cloud_event):
         print("No historyId found in event.")
         return
 
-    # 2. Authenticate
-    token_json_str = os.environ.get('GMAIL_TOKEN_JSON')
-    if not token_json_str:
-        print("Error: GMAIL_TOKEN_JSON env var not set.")
-        return
-        
-    service = get_gmail_service(token_info=json.loads(token_json_str))
+    # 2. Authenticate using Secret Manager
+    service = get_gmail_service(use_secret_manager=True)
     
     # 3. Find and process new messages
     results = service.users().messages().list(userId='me', labelIds=['INBOX', 'UNREAD']).execute()

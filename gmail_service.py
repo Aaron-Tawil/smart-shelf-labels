@@ -1,5 +1,6 @@
 import os
 import base64
+import json
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -14,12 +15,53 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.modify' # To remove UNREAD label
 ]
 
-def get_gmail_service(token_json_path=None, token_info=None):
+# Secret Manager Configuration
+PROJECT_ID = "super-home-automation"
+SECRET_ID = "gmail-oauth-token"
+
+def load_token_from_secret():
+    """Load the Gmail token from Google Cloud Secret Manager."""
+    try:
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{PROJECT_ID}/secrets/{SECRET_ID}/versions/latest"
+        response = client.access_secret_version(request={"name": name})
+        token_json = response.payload.data.decode("UTF-8")
+        print(f"Loaded token from Secret Manager (expiry: {json.loads(token_json).get('expiry', 'unknown')})")
+        return json.loads(token_json)
+    except Exception as e:
+        print(f"Error loading token from Secret Manager: {e}")
+        return None
+
+def save_token_to_secret(token_info):
+    """Save the Gmail token to Google Cloud Secret Manager as a new version."""
+    try:
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        parent = f"projects/{PROJECT_ID}/secrets/{SECRET_ID}"
+        payload = json.dumps(token_info).encode("UTF-8")
+        response = client.add_secret_version(
+            request={"parent": parent, "payload": {"data": payload}}
+        )
+        print(f"Saved refreshed token to Secret Manager: {response.name}")
+        return True
+    except Exception as e:
+        print(f"Error saving token to Secret Manager: {e}")
+        return False
+
+def get_gmail_service(token_json_path=None, token_info=None, use_secret_manager=False):
     """
     Returns an authenticated Gmail service object.
-    Can use a local token.json file or a dictionary of token info (for Cloud Function).
+    Can use a local token.json file, a dictionary of token info, or Secret Manager.
+    If token is refreshed and use_secret_manager is True, persists the new token.
     """
     creds = None
+    
+    # Try Secret Manager first if enabled
+    if use_secret_manager:
+        token_info = load_token_from_secret()
+        if not token_info:
+            raise Exception("Could not load token from Secret Manager")
     
     if token_info:
         creds = Credentials.from_authorized_user_info(token_info, SCOPES)
@@ -28,11 +70,27 @@ def get_gmail_service(token_json_path=None, token_info=None):
         
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
+            print("Token expired, refreshing...")
             creds.refresh(Request())
+            print(f"Token refreshed. New expiry: {creds.expiry}")
+            
+            # Persist refreshed token to Secret Manager
+            if use_secret_manager:
+                new_token_info = {
+                    "token": creds.token,
+                    "refresh_token": creds.refresh_token,
+                    "token_uri": creds.token_uri,
+                    "client_id": creds.client_id,
+                    "client_secret": creds.client_secret,
+                    "scopes": list(creds.scopes),
+                    "expiry": creds.expiry.isoformat() + "Z" if creds.expiry else None,
+                }
+                save_token_to_secret(new_token_info)
         else:
             raise Exception("No valid credentials found. Run setup_oauth.py locally first.")
 
     return build('gmail', 'v1', credentials=creds)
+
 
 def get_message_content(service, user_id, msg_id):
     """Retrieves the full message content."""
