@@ -16,8 +16,8 @@ SCOPES = [
 ]
 
 # Secret Manager Configuration
-PROJECT_ID = "super-home-automation"
-SECRET_ID = "gmail-oauth-token"
+PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "super-home-automation")
+SECRET_ID = os.environ.get("GCP_SECRET_ID", "gmail-oauth-token")
 
 def load_token_from_secret():
     """Load the Gmail token from Google Cloud Secret Manager."""
@@ -29,6 +29,12 @@ def load_token_from_secret():
         token_json = response.payload.data.decode("UTF-8")
         print(f"Loaded token from Secret Manager (expiry: {json.loads(token_json).get('expiry', 'unknown')})")
         return json.loads(token_json)
+    except json.JSONDecodeError as e:
+        print(f"Error decoding token from Secret Manager: {e}")
+        # Log a snippet relative safely
+        snippet = token_json[:50] if 'token_json' in locals() and token_json else "Empty or None"
+        print(f"Snippet of invalid token data: {snippet}...")
+        return None
     except Exception as e:
         print(f"Error loading token from Secret Manager: {e}")
         return None

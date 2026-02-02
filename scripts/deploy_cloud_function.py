@@ -9,6 +9,28 @@ import sys
 
 
 def deploy():
+    # --- LOAD CONFIGURATION ---
+    # Defaults
+    project_id = "super-home-automation"
+    secret_id = "gmail-oauth-token"
+    gemini_key = None
+    env_vars = {}
+
+    if os.path.exists('env.yaml'):
+        try:
+            import yaml
+            with open('env.yaml', 'r') as f:
+                env_vars = yaml.safe_load(f) or {}
+                
+            project_id = env_vars.get('GCP_PROJECT_ID', project_id)
+            secret_id = env_vars.get('GCP_SECRET_ID', secret_id)
+            if 'GEMINI_API_KEY' in env_vars:
+                gemini_key = json.dumps(env_vars['GEMINI_API_KEY'])
+                
+            print(f"Configuration loaded. Project: {project_id}, Secret: {secret_id}")
+        except Exception as e:
+            print(f"Warning: Could not read env.yaml: {e}")
+
     # --- AUTO-REFRESH AND SYNC TO SECRET MANAGER ---
     try:
         from google.oauth2.credentials import Credentials
@@ -37,13 +59,32 @@ def deploy():
                 print("Saved refreshed token to disk.")
                 
             # Sync to Secret Manager
-            print("Syncing token to Secret Manager...")
+            print(f"Syncing token to Secret Manager ({secret_id})...")
             client = secretmanager.SecretManagerServiceClient()
-            parent = "projects/super-home-automation/secrets/gmail-oauth-token"
-            with open(token_path, 'r') as f:
-                payload = f.read().encode("UTF-8")
-            client.add_secret_version(request={"parent": parent, "payload": {"data": payload}})
-            print("Token synced to Secret Manager.")
+            parent = f"projects/{project_id}/secrets/{secret_id}"
+            
+            # Validate token.json before uploading
+            try:
+                with open(token_path, 'r') as f:
+                    token_content = f.read()
+                    
+                # Parsed just to check validity
+                token_json = json.loads(token_content)
+                
+                # Check for critical keys
+                if 'token' not in token_json and 'refresh_token' not in token_json:
+                     raise ValueError("Token JSON missing 'token' or 'refresh_token' fields")
+
+                payload = token_content.encode("UTF-8")
+                client.add_secret_version(request={"parent": parent, "payload": {"data": payload}})
+                print(f"Token synced to Secret Manager: {parent}")
+                
+            except json.JSONDecodeError:
+                print("ERROR: token.json is not valid JSON. Skipping sync to Secret Manager.")
+            except ValueError as ve:
+                print(f"ERROR: token.json is invalid: {ve}. Skipping sync to Secret Manager.")
+            except Exception as e:
+                print(f"Error reading/validating token.json: {e}")
             
     except ImportError:
         print("Warning: Could not import required libraries. Skipping token sync.")
@@ -55,22 +96,17 @@ def deploy():
     print(f"Creating {env_file}...")
     
     with open(env_file, 'w') as f:
-        # Read GEMINI_API_KEY from existing env.yaml if available
-        try:
-            import yaml
-            if os.path.exists('env.yaml'):
-                with open('env.yaml', 'r') as env_f:
-                    existing_env = yaml.safe_load(env_f)
-                    if existing_env and 'GEMINI_API_KEY' in existing_env:
-                        print("Found GEMINI_API_KEY in env.yaml, adding to deployment...")
-                        gemini_key = json.dumps(existing_env['GEMINI_API_KEY'])
-                        f.write(f"GEMINI_API_KEY: {gemini_key}\n")
-                    else:
-                        print("Warning: GEMINI_API_KEY not found in env.yaml. LLM features may fail.")
-                        f.write("# No environment variables\n")
-        except Exception as e:
-            print(f"Warning: Could not read GEMINI_API_KEY from env.yaml: {e}")
-            f.write("# No environment variables\n")
+        # Write variables loaded earlier
+        if gemini_key:
+            f.write(f"GEMINI_API_KEY: {gemini_key}\n")
+        
+        if 'GCP_PROJECT_ID' in env_vars:
+            f.write(f"GCP_PROJECT_ID: {env_vars['GCP_PROJECT_ID']}\n")
+        if 'GCP_SECRET_ID' in env_vars:
+            f.write(f"GCP_SECRET_ID: {env_vars['GCP_SECRET_ID']}\n")
+            
+        if not gemini_key and 'GCP_PROJECT_ID' not in env_vars:
+            f.write("# No environment variables to write.\n")
 
     # --- 1. DEPLOY PUBSUB FUNCTION (signage-bot) ---
     cmd_pubsub = [

@@ -51,6 +51,20 @@ def generate_signs_http(request):
             }
             
             print("Executing watch()...")
+            # Force stop to reset the notification channel purely
+            try:
+                service.users().stop(userId='me').execute()
+                print("Stopped previous watch (Reset).")
+            except Exception as e:
+                print(f"Warning: Could not stop previous watch (might be already stopped): {e}")
+
+            # Verify user profile (debug)
+            try:
+                profile = service.users().getProfile(userId='me').execute()
+                print(f"Authenticated as: {profile.get('emailAddress')}")
+            except Exception as e:
+                print(f"Warning: Could not get profile: {e}")
+
             response = service.users().watch(userId='me', body=request_body).execute()
             
             # LOG THE RESPONSE
