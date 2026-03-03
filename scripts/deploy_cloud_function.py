@@ -31,6 +31,44 @@ def deploy():
         except Exception as e:
             print(f"Warning: Could not read env.yaml: {e}")
 
+    def get_secret_versions_to_keep():
+        raw_value = str(env_vars.get("GCP_SECRET_VERSIONS_TO_KEEP", os.environ.get("GCP_SECRET_VERSIONS_TO_KEEP", "3")))
+        try:
+            return max(1, int(raw_value))
+        except ValueError:
+            print(f"Warning: Invalid GCP_SECRET_VERSIONS_TO_KEEP value '{raw_value}'. Defaulting to 3.")
+            return 3
+
+    def prune_old_secret_versions(client, parent, keep_latest):
+        from google.cloud import secretmanager
+
+        versions = []
+        for version in client.list_secret_versions(request={"parent": parent}):
+            version_number = version.name.rsplit("/", 1)[-1]
+            if not version_number.isdigit():
+                continue
+            if version.state == secretmanager.SecretVersion.State.DESTROYED:
+                continue
+            versions.append((int(version_number), version.name, version.state))
+
+        if len(versions) <= keep_latest:
+            return 0
+
+        versions.sort(key=lambda item: item[0], reverse=True)
+        old_versions = versions[keep_latest:]
+        destroyed_count = 0
+
+        for _, version_name, state in old_versions:
+            try:
+                if state == secretmanager.SecretVersion.State.ENABLED:
+                    client.disable_secret_version(request={"name": version_name})
+                client.destroy_secret_version(request={"name": version_name})
+                destroyed_count += 1
+            except Exception as e:
+                print(f"Warning: Could not destroy secret version {version_name}: {e}")
+
+        return destroyed_count
+
     # --- AUTO-REFRESH AND SYNC TO SECRET MANAGER ---
     try:
         from google.oauth2.credentials import Credentials
@@ -78,6 +116,11 @@ def deploy():
                 payload = token_content.encode("UTF-8")
                 client.add_secret_version(request={"parent": parent, "payload": {"data": payload}})
                 print(f"Token synced to Secret Manager: {parent}")
+
+                keep_latest = get_secret_versions_to_keep()
+                destroyed_count = prune_old_secret_versions(client, parent, keep_latest)
+                if destroyed_count:
+                    print(f"Pruned {destroyed_count} old secret version(s), keeping latest {keep_latest}.")
                 
             except json.JSONDecodeError:
                 print("ERROR: token.json is not valid JSON. Skipping sync to Secret Manager.")
@@ -104,8 +147,15 @@ def deploy():
             f.write(f"GCP_PROJECT_ID: {env_vars['GCP_PROJECT_ID']}\n")
         if 'GCP_SECRET_ID' in env_vars:
             f.write(f"GCP_SECRET_ID: {env_vars['GCP_SECRET_ID']}\n")
+        if 'GCP_SECRET_VERSIONS_TO_KEEP' in env_vars:
+            f.write(f"GCP_SECRET_VERSIONS_TO_KEEP: {env_vars['GCP_SECRET_VERSIONS_TO_KEEP']}\n")
             
-        if not gemini_key and 'GCP_PROJECT_ID' not in env_vars:
+        if (
+            not gemini_key
+            and 'GCP_PROJECT_ID' not in env_vars
+            and 'GCP_SECRET_ID' not in env_vars
+            and 'GCP_SECRET_VERSIONS_TO_KEEP' not in env_vars
+        ):
             f.write("# No environment variables to write.\n")
 
     # --- 1. DEPLOY PUBSUB FUNCTION (signage-bot) ---

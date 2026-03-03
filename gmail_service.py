@@ -18,6 +18,51 @@ SCOPES = [
 # Secret Manager Configuration
 PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "super-home-automation")
 SECRET_ID = os.environ.get("GCP_SECRET_ID", "gmail-oauth-token")
+SECRET_VERSIONS_TO_KEEP_ENV = "GCP_SECRET_VERSIONS_TO_KEEP"
+
+def _get_secret_versions_to_keep():
+    """Return how many secret versions to retain."""
+    raw_value = os.environ.get(SECRET_VERSIONS_TO_KEEP_ENV, "3")
+    try:
+        return max(1, int(raw_value))
+    except ValueError:
+        print(f"Invalid {SECRET_VERSIONS_TO_KEEP_ENV} value '{raw_value}', defaulting to 3.")
+        return 3
+
+def prune_old_secret_versions(client, parent, keep_latest):
+    """Destroy old secret versions, keeping only the newest keep_latest versions."""
+    try:
+        from google.cloud import secretmanager
+
+        versions = []
+        for version in client.list_secret_versions(request={"parent": parent}):
+            version_number = version.name.rsplit("/", 1)[-1]
+            if not version_number.isdigit():
+                continue
+            if version.state == secretmanager.SecretVersion.State.DESTROYED:
+                continue
+            versions.append((int(version_number), version.name, version.state))
+
+        if len(versions) <= keep_latest:
+            return 0
+
+        versions.sort(key=lambda item: item[0], reverse=True)
+        old_versions = versions[keep_latest:]
+        destroyed_count = 0
+
+        for _, version_name, state in old_versions:
+            try:
+                if state == secretmanager.SecretVersion.State.ENABLED:
+                    client.disable_secret_version(request={"name": version_name})
+                client.destroy_secret_version(request={"name": version_name})
+                destroyed_count += 1
+            except Exception as e:
+                print(f"Warning: Could not destroy secret version {version_name}: {e}")
+
+        return destroyed_count
+    except Exception as e:
+        print(f"Warning: Failed to prune old secret versions: {e}")
+        return 0
 
 def load_token_from_secret():
     """Load the Gmail token from Google Cloud Secret Manager."""
@@ -50,6 +95,12 @@ def save_token_to_secret(token_info):
             request={"parent": parent, "payload": {"data": payload}}
         )
         print(f"Saved refreshed token to Secret Manager: {response.name}")
+
+        keep_latest = _get_secret_versions_to_keep()
+        destroyed_count = prune_old_secret_versions(client, parent, keep_latest)
+        if destroyed_count:
+            print(f"Pruned {destroyed_count} old secret version(s), keeping latest {keep_latest}.")
+
         return True
     except Exception as e:
         print(f"Error saving token to Secret Manager: {e}")
