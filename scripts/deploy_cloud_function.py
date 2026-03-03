@@ -138,17 +138,22 @@ def deploy():
     env_file = "deploy_env.yaml"
     print(f"Creating {env_file}...")
     
+    def _yaml_quoted_string(value):
+        # gcloud --env-vars-file requires string values; quote to avoid int/bool coercion.
+        text = str(value).replace("\\", "\\\\").replace('"', '\\"')
+        return f"\"{text}\""
+
     with open(env_file, 'w') as f:
         # Write variables loaded earlier
         if gemini_key:
-            f.write(f"GEMINI_API_KEY: {gemini_key}\n")
+            f.write(f"GEMINI_API_KEY: {_yaml_quoted_string(gemini_key)}\n")
         
         if 'GCP_PROJECT_ID' in env_vars:
-            f.write(f"GCP_PROJECT_ID: {env_vars['GCP_PROJECT_ID']}\n")
+            f.write(f"GCP_PROJECT_ID: {_yaml_quoted_string(env_vars['GCP_PROJECT_ID'])}\n")
         if 'GCP_SECRET_ID' in env_vars:
-            f.write(f"GCP_SECRET_ID: {env_vars['GCP_SECRET_ID']}\n")
+            f.write(f"GCP_SECRET_ID: {_yaml_quoted_string(env_vars['GCP_SECRET_ID'])}\n")
         if 'GCP_SECRET_VERSIONS_TO_KEEP' in env_vars:
-            f.write(f"GCP_SECRET_VERSIONS_TO_KEEP: {env_vars['GCP_SECRET_VERSIONS_TO_KEEP']}\n")
+            f.write(f"GCP_SECRET_VERSIONS_TO_KEEP: {_yaml_quoted_string(env_vars['GCP_SECRET_VERSIONS_TO_KEEP'])}\n")
             
         if (
             not gemini_key
